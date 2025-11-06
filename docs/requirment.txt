@@ -1,0 +1,57 @@
+# Stable Diffusion Service Requirements
+
+## 1. Goals
+- Deliver a local-only Stable Diffusion experience backed by **OpenVINO/stable-diffusion-v1-5-int8-ov**.
+- Provide both an HTTP API and a minimal browser UI so prompts, parameters, and results stay on-device.
+- Support Intel GPU acceleration out of the box with graceful CPU fallback.
+
+## 2. Target Users
+- AI PC enthusiasts exploring OpenVINO-optimized diffusion models.
+- Designers and makers who need private, offline concept generation.
+- Educators showcasing diffusion workflows without cloud dependencies.
+
+## 3. Functional Requirements
+### 3.1 Image Generation API
+- Expose `POST /image` accepting `prompt`, `negative_prompt`, `num_inference_steps`, `guidance_scale`, `width`, `height`, and optional `seed`.
+- Validate dimensions as multiples of 8 and enforce sensible numeric bounds.
+- Return metadata including job id, provider, device, timestamps, mock flag, and a URL to the generated PNG.
+
+### 3.2 Health & Operations
+- Provide `GET /health` reporting readiness (`ok` or `degraded`), mock usage, cached model availability, configured repo id, cache directories, and device target.
+- Log download failures and inference exceptions with actionable messages (GPU fallback, timeout, etc.).
+- Allow deterministic mock mode via `USE_MOCKS=true` for demos without the OpenVINO runtime.
+
+### 3.3 Model Lifecycle
+- When `AUTO_DOWNLOAD_MODELS=true`, download the Hugging Face snapshot into `data/models/stable-diffusion` at startup (idempotent).
+- Ship `python download_models.py [--force]` to pre-stage weights or refresh a corrupted cache.
+- Respect `HUGGINGFACE_TOKEN` when a gated repository is used.
+
+### 3.4 User Interface
+- Serve static assets (`index.html`, `ui.js`, `styles.css`, `mock-image.svg`) directly from FastAPI.
+- Let users tweak core parameters and display live status (generating, complete, error) plus the latest image.
+- Avoid build tooling; assets must run in any modern browser without bundling.
+
+## 4. Non-functional Requirements
+- Operate fully offline once dependencies and weights are installed.
+- Complete a 512×512 inference in ~20 seconds or provide clear timeout feedback.
+- Keep code modular to enable future additions (safety filters, background jobs, galleries).
+- Document GPU requirements and fallback behavior.
+
+## 5. Technical Constraints
+- Python 3.10+ runtime.
+- Backend stack: FastAPI, Pydantic v2, `pydantic-settings`, `optimum-intel`, `diffusers`, `openvino`, `huggingface-hub`, `numpy`, `Pillow`.
+- No external inference server; all generation relies on the local OpenVINO pipeline.
+- Filesystem layout must be friendly for Windows paths (default) but portable to Linux/macOS.
+
+## 6. Setup Flow
+1. Create a virtual environment and install dependencies with `pip install -r requirements.txt`.
+2. Optionally run `python download_models.py` (requires Hugging Face credentials if the repo is gated).
+3. Export environment variables or `.env` values as needed (`USE_MOCKS`, `OPENVINO_DEVICE`, etc.).
+4. Launch `uvicorn main:app --reload` and navigate to `http://127.0.0.1:8000/`.
+5. Submit prompts via UI or API; generated images appear under `data/generated`.
+
+## 7. Future Enhancements
+- Add disk-retention policies or cleanup utilities for generated images.
+- Introduce authentication and rate limiting for shared deployments.
+- Plug-in safety/NSFW filtering prior to returning results.
+- Support batched generation and job tracking for longer queues.
